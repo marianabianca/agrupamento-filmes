@@ -38,21 +38,22 @@ import_data <- function(celebridade = "tom_cruise"){
     require(tidyverse, warn.conflicts = F)
     require(rvest)
     
-    url_alvo = paste0("https://www.rottentomatoes.com/celebrity/", celebridade)
+    url_alvo = str_glue("https://www.rottentomatoes.com/celebrity/{celebridade}")
     
     from_page <- read_html(url_alvo) %>% 
-        html_node("#filmographyTbl") %>% # A sintaxe da expressão é de um seletor à lá JQuery: https://rdrr.io/cran/rvest/man/html_nodes.html 
+        html_node("#filmography") %>% # A sintaxe da expressão é de um seletor à lá JQuery: https://rdrr.io/cran/rvest/man/html_nodes.html 
+        html_node("table") %>%
         html_table(fill=TRUE) %>% # Faz parse
-        as.tibble()
+        as_tibble()
     
     filmes = from_page %>% 
         filter(RATING != "No Score Yet", 
-               `BOX OFFICE` != "—", 
+               BOXOFFICE != "—", 
                !(CREDIT %in% c("Producer", "Executive Producer"))) %>%
         mutate(RATING = as.numeric(gsub("%", "", RATING)),
                CREDIT = gsub("\n *", " ", CREDIT),
-               `BOX OFFICE` = as.numeric(gsub("[$|M]", "", `BOX OFFICE`))) %>% 
-        filter(`BOX OFFICE` >= 1)
+               BOXOFFICE = as.numeric(gsub("[$|M]", "", BOXOFFICE))) %>% 
+        filter(BOXOFFICE >= 1)
     
     filmes %>% 
         write_csv(here::here("data/movies.csv"))
@@ -63,7 +64,7 @@ read_imported_data <- function(){
              col_types = "iccdi") %>% 
         rename(filme = TITLE,
                avaliacao = RATING, 
-               bilheteria = `BOX OFFICE`,
+               bilheteria = BOXOFFICE,
                ano = YEAR, 
                papel = CREDIT)
 }
