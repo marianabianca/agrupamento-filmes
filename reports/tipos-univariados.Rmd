@@ -12,6 +12,10 @@ library(here)
 library(cluster)
 library(plotly)
 library(ggdendro)
+library(broom)
+library(ggbeeswarm)
+library(ggpubr)
+library(ggalt)
 
 source(here::here("code/lib.R"))
 theme_set(theme_report())
@@ -31,7 +35,7 @@ paleta = c("#404E4D",
 ```{r}
 ## ANTES DE USAR
 # Para criar data/movies.csv
-import_data("scarlett_johansson") # ou com o ator/atriz que você escolher
+import_data("anne_hathaway") # ou com o ator/atriz que você escolher
 ```
 
 
@@ -39,92 +43,52 @@ import_data("scarlett_johansson") # ou com o ator/atriz que você escolher
 filmes = read_imported_data()
 ```
 
-## Descrição
-
-```{r}
-filmes %>% 
-    ggplot(aes(x = ano, y = bilheteria)) + 
-    geom_point(size = 4, color = paleta[1]) 
+```{r read}
+filmes_transform = filmes %>% 
+    mutate(bilheteria_log_scaled = as.vector(scale(log10(bilheteria))),
+           avaliacao_scaled = as.vector(scale(avaliacao)))
 ```
 
-
-
-```{r}
-filmes %>% 
-    ggplot(aes(x = bilheteria)) + 
-    geom_histogram(binwidth = 15, fill = paleta[2], color = "black") + 
-    geom_rug(size = .5) 
-```
-
-```{r}
-filmes %>% 
-    ggplot(aes(x = avaliacao)) + 
-    geom_histogram(binwidth = 10, boundary = 0, fill = paleta[3], color = "black") + 
-    geom_rug(size = .5) 
-```
-
-## Estrutura de grupos?
-
-```{r}
-p = filmes %>% 
-    ggplot(aes(x = "", y = bilheteria, label = filme)) + 
-    geom_jitter(width = .05, alpha = .3, size = 3) + 
-    labs(x = "")
-
-ggplotly(p)
-```
-
-## Agrupamento hierárquico
-
-```{r}
-agrupamento_h = filmes %>% 
-    mutate(nome = paste0(filme, 
-                         " (av=", 
-                         avaliacao, 
-                         ")")) %>% 
-    as.data.frame() %>% 
-    column_to_rownames("filme") %>% 
-    select(avaliacao) %>%
-    dist(method = "euclidian") %>% 
-    hclust(method = "complete")
-
-ggdendrogram(agrupamento_h, rotate = T, size = 2, theme_dendro = F) + 
-    labs(y = "Dissimilaridade", x = "", title = "Dendrograma")
-```
-
-```{r}
-get_grupos <- function(agrupamento, num_grupos){
-    agrupamento %>% 
-        cutree(num_grupos) %>% 
-        as.data.frame() %>% 
-        mutate(label = rownames(.)) %>% 
-        gather(key =  "k", value = "grupo", -label) %>% 
-        mutate(grupo = as.character(grupo))
+```{r read}
+plot_clusgap = function(clusgap, title = "Gap Statistic calculation results") {
+    require("ggplot2")
+    gstab = data.frame(clusgap$Tab, k = 1:nrow(clusgap$Tab))
+    p = ggplot(gstab, aes(k, gap)) + geom_line() + geom_point(size = 5)
+    p = p + geom_errorbar(aes(ymax = gap + SE.sim, ymin = gap - SE.sim), width = .2)
+    p = p + ggtitle(title)
+    return(p)
 }
+```
 
-atribuicoes = get_grupos(agrupamento_h, num_grupos = 1:6)
-
-atribuicoes = atribuicoes %>% 
-    left_join(filmes, by = c("label" = "filme"))
-
-atribuicoes %>% 
-    ggplot(aes(x = "Filmes", y = avaliacao, colour = grupo)) + 
-    geom_jitter(width = .02, height = 0, size = 1.6, alpha = .6) + 
-    facet_wrap(~ paste(k, " grupos")) + 
-    scale_color_brewer(palette = "Dark2")
-
+```{r read}
+gaps <- filmes_transform %>% 
+    select(avaliacao_scaled, bilheteria_log_scaled) %>% 
+    clusGap(FUN = kmeans, nstart = 20, K.max = 8, B = 200)
+plot_clusgap(gaps)
 ```
 
 ```{r}
-k_escolhido = 3
+n_clusters = 5
+# O agrupamento de fato:
+km = filmes_transform %>% 
+    select(bilheteria_log_scaled, avaliacao_scaled) %>% 
+    kmeans(centers = n_clusters, nstart = 20)
 
-atribuicoes %>% 
-    filter(k == k_escolhido) %>% 
-    ggplot(aes(x = reorder(label, avaliacao), y = avaliacao, colour = grupo)) + 
-    geom_jitter(width = .02, height = 0, size = 3, alpha = .6) + 
-    facet_wrap(~ paste(k, " grupos")) + 
-    scale_color_brewer(palette = "Dark2") + 
-    labs(x = "", y = "Avaliação RT") + 
-    coord_flip() 
+agrupado = km %>% 
+    augment(filmes_transform)
+
+agrupado %>% 
+    ggplot(aes(x = avaliacao_scaled, y = bilheteria_log_scaled, color = .cluster))  + 
+    geom_point(size = 3, alpha = 0.6) + 
+    geom_enc
+
+x = ggscatter(agrupado, x="avaliacao_scaled", y="bilheteria_log_scaled", color=".cluster", size = 2, alpha = 0.6)+
+    stat_chull(aes(fill= .cluster), alpha= 0.1, geom="polygon") +
+    xlab("Avaliação") +
+    ylab("Bilheteria")
+
+ggplotly(x)
 ```
+
+
 
