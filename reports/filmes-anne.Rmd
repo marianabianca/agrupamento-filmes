@@ -1,0 +1,170 @@
+---
+title: "Tipos de filmes de Anne Hathaway"
+author: "Mariana Dela-Bianca"
+date: "12 de maio de 2019"
+output:
+  prettydoc::html_pretty:
+    theme: hpstr
+    highlight: github
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(cluster)
+library(plotly)
+library(ggdendro)
+library(broom)
+library(ggbeeswarm)
+library(ggpubr)
+
+set.seed(7)
+
+source(here::here("code/lib.R"))
+theme_set(theme_report())
+
+knitr::opts_chunk$set(tidy = FALSE,
+                      fig.width = 6,
+                      fig.height = 5,
+                      echo = TRUE)
+
+paleta = c("#404E4D",
+           "#92DCE5",
+           "#938BA1",
+           "#2D3142",
+           "#F4743B")
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## ANTES DE USAR
+# Para criar data/movies.csv
+import_data("anne_hathaway") # ou com o ator/atriz que você escolher
+```
+
+<center><h3>Vamos analisar um pouco os tipos de filmes que a Anne Hathaway já atuou? VAMOS!!</h3></center>
+
+# Os dados
+
+Antes de tudo foi preciso pegar os dados e passar eles por alguns processos para que a análise ficasse mais interessante. Os dados sobre os filmes da atriz foram pegos no site *Rotten Tomatoes*, que possui avaliações de filmes e dados sobre eles.
+
+```{r read}
+filmes = read_imported_data()
+```
+
+Primeiro normalizamos as variáveis que vamos usar, que são *bilheteria* e *avaliação* de cada filme, e por conta da forma como os números da bilheteria dos filmes são distribuídos (há uns poucos filmes com uma bilheteria alta, mas a maioria tem uma bilheteria intermediária para baixa) aplicamos uma transformação de log10 em *bilheteria*.
+
+```{r}
+filmes_transform = filmes %>% 
+    mutate(bilheteria_log_scaled = as.vector(scale(log10(bilheteria))),
+           avaliacao_scaled = as.vector(scale(avaliacao)))
+```
+
+***
+
+# Agrupamento
+
+Após esses paranauês, precisamos decidir como vamos agrupar os filmes da atriz. Nesse post o agrupamento não será feito manualmente por mim, mas sim automatizado e utilizaremos um algoritmo chamado *k-means* para fazer isso.
+
+Então, quantos grupos de filmes é a melhor escolha?
+
+```{r}
+plot_clusgap = function(clusgap,
+                        title = "Gap Statistic calculation results") {
+    require("ggplot2")
+    gstab = data.frame(clusgap$Tab, k = 1:nrow(clusgap$Tab))
+    p = ggplot(gstab, aes(k, gap)) + geom_line() + geom_point(size = 5)
+    p = p + geom_errorbar(aes(ymax = gap + SE.sim,
+                              ymin = gap - SE.sim), width = .2)
+    p = p + ggtitle(title)
+    return(p)
+}
+```
+
+```{r fig.width=10, fig.height=6, fig.align='center'}
+gaps <- filmes_transform %>% 
+    select(avaliacao_scaled, bilheteria_log_scaled) %>% 
+    clusGap(FUN = kmeans, nstart = 20, K.max = 8, B = 200)
+plot_clusgap(gaps)
+```
+
+De acordo com a medida escolhida, que foi a *GAP statistic*, o número ideal de grupo é 5 e vamos utilizar ele no *k-means*.
+
+```{r}
+n_clusters = 5
+# O agrupamento de fato:
+km = filmes_transform %>% 
+    select(bilheteria_log_scaled, avaliacao_scaled) %>% 
+    kmeans(centers = n_clusters, nstart = 20)
+
+agrupado = km %>% 
+    augment(filmes_transform)
+
+```
+
+```{r}
+
+telaQuente = agrupado %>% 
+    filter(filme == "Interstellar")
+
+preciosos = agrupado %>% 
+    filter(filme == "Colossal")
+
+haMelhores = agrupado %>% 
+    filter(filme == "Bride Wars")
+
+expectativa = agrupado %>% 
+    filter(filme == "Rio 2")
+
+passatempoBom = agrupado %>% 
+    filter(filme == "One Day")
+
+grupos = agrupado %>% 
+    add_column(grupo = NA) %>% 
+    mutate(grupo = sub(telaQuente$.cluster, "Tela quente", .cluster)) %>% 
+    mutate(grupo = sub(preciosos$.cluster, "Preciosos", grupo)) %>% 
+    mutate(grupo = sub(haMelhores$.cluster, "Há melhores", grupo)) %>% 
+    mutate(grupo = sub(expectativa$.cluster, "Alta expectativa", grupo)) %>% 
+    mutate(grupo = sub(passatempoBom$.cluster, "Passatempo bom", grupo))
+```
+
+***
+
+# Grupos de filmes
+
+```{r fig.width=8, fig.height=6, fig.align='center', warning=FALSE}
+x = grupos %>% 
+    ggplot(aes(x=avaliacao, y=bilheteria)) +
+    stat_chull(aes(fill= grupo, text = paste("<b>grupo</b>: ", grupo)),
+               alpha= 0.2, geom="polygon") +
+    geom_point(aes(color = grupo,
+                   text = paste("<b>grupo</b>: ", grupo,
+                                "<br><b>filme</b>: ", filme,
+                                "<br><b>avaliação</b>: ", avaliacao,
+                                "<br><b>bilheteria</b>: ", bilheteria))) +
+    xlab("Avaliação") +
+    ylab("Bilheteria") +
+    scale_y_log10() +
+    theme(legend.position = "none")
+
+ggplotly(x, tooltip = "text")
+```
+
+Então, aqui temos cinco grupos, vamos entender eles um pouco melhor eles.
+
+De acordo com a *bilheteria* e a *avaliação* escolhi alguns nomes para os grupos. Passando o mouse em cima de cada área colorida você pode ver o nome dos grupos, ou então passando o mouse em cima de cada pontinho (que representa um filme) você pode ver informações sobre o filme, incluindo o grupo a que esse filme pertence.
+
+**Tela quente**: Esse é o grupo dos filmes com melhores notas e melhor bilheteria, são aqueles que um tempo após terem sido lançados no cinema você vê a propaganda de que ele vai passar no programa Tela Quente. Foram filmes esperados pelo público e que foram bem avaliados, o tipo que é difícil te decepcionar. O Diabo Veste Prada é um bom exemplo do perfil deste grupo, inclusive recomendo.
+
+**Preciosos**: Os filmes desse grupo são os que tiveram uma bilheteria baixa mas são aclamados, então decidi chamar de preciosos, pois não foram muitas pessoas que os assistiram no cinema, mas as que o fizeram possivelmente tiveram o prazer de sair do cinema satisfeitas.
+
+**Há melhores**: São filmes que se você procurar um pouco mais você vai encontrar algum outro da mesma categoria que é mais interessante. Filmes com avaliação bem baixa mas que tiveram uma bilheteria de média para alta. Alguns desses filmes são "solo" e outros são continuações de algum outro filme. No caso dos que são continuações, pode ter acontecido de não terem alcançado a expectativa esperada, como O Diário da Princesa 2, que apesar da baixa avaliação vale a pena assistir se você já assistiu O Diário da Princesa.
+
+Falando em expectativa temos  uma categoria sobre isso.
+
+**Alta expectativa**, mas não foi alcançada. Como os filmes desse grupo possuem uma bilheteria relativamente alta, uma avaliação mediana e a maior parte do grupo é formada por filmes famosos que foram esperados pelo público, então o nome da categoria foi dado por conta da sua avaliação e aguardo. Ainda lembro da época que Alice no País das Maravilhas foi lançado, muitas pessoas indo ao cinema para assistí-lo, foi bem aguardado, mas a avaliação não foi a esperada.
+
+Por último, mas não menos importante (já que não foi seguida nenhuma ordem ao falar dos grupos), temos:
+
+**Passatempo bom**, que se trata de filmes legais para assistir em um momento que você tem um tempo livre. Há comédia, drama e também animação nessa categoria, então você pode escolher o que mais lhe agrada. São filmes que tiveram uma bilheteria mediana e uma avaliação também mediana. Uma Garota Encantada é um dos filmes desse grupo. Uma comédia musical muito legal para descontrair e se divertir.
+
+Espero que você tenha achado legal entender um pouco mais sobre os filmes que a Anne Hathaway já atuou. Eu achei bem legal e talvez no futuro faça de outros artistas também :D 
