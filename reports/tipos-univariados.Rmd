@@ -1,5 +1,7 @@
 ---
-title: "Tipos de filme de FULANO(A)"
+title: "Tipos de filme de Anne Hathaway"
+author: Mariana Dela-Bianca
+date: "12 de maio de 2019"
 output:
     html_document:
     df_print: paged
@@ -15,7 +17,8 @@ library(ggdendro)
 library(broom)
 library(ggbeeswarm)
 library(ggpubr)
-library(ggalt)
+
+set.seed(7)
 
 source(here::here("code/lib.R"))
 theme_set(theme_report())
@@ -32,7 +35,7 @@ paleta = c("#404E4D",
            "#F4743B")
 ```
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 ## ANTES DE USAR
 # Para criar data/movies.csv
 import_data("anne_hathaway") # ou com o ator/atriz que você escolher
@@ -43,13 +46,13 @@ import_data("anne_hathaway") # ou com o ator/atriz que você escolher
 filmes = read_imported_data()
 ```
 
-```{r read}
+```{r}
 filmes_transform = filmes %>% 
     mutate(bilheteria_log_scaled = as.vector(scale(log10(bilheteria))),
            avaliacao_scaled = as.vector(scale(avaliacao)))
 ```
 
-```{r read}
+```{r}
 plot_clusgap = function(clusgap, title = "Gap Statistic calculation results") {
     require("ggplot2")
     gstab = data.frame(clusgap$Tab, k = 1:nrow(clusgap$Tab))
@@ -60,7 +63,7 @@ plot_clusgap = function(clusgap, title = "Gap Statistic calculation results") {
 }
 ```
 
-```{r read}
+```{r}
 gaps <- filmes_transform %>% 
     select(avaliacao_scaled, bilheteria_log_scaled) %>% 
     clusGap(FUN = kmeans, nstart = 20, K.max = 8, B = 200)
@@ -77,17 +80,49 @@ km = filmes_transform %>%
 agrupado = km %>% 
     augment(filmes_transform)
 
-agrupado %>% 
-    ggplot(aes(x = avaliacao_scaled, y = bilheteria_log_scaled, color = .cluster))  + 
-    geom_point(size = 3, alpha = 0.6) + 
-    geom_enc
+```
 
-x = ggscatter(agrupado, x="avaliacao_scaled", y="bilheteria_log_scaled", color=".cluster", size = 2, alpha = 0.6)+
-    stat_chull(aes(fill= .cluster), alpha= 0.1, geom="polygon") +
+```{r}
+
+telaQuenteCluster = agrupado %>% 
+    filter(filme == "Interstellar")
+
+preciososCluster = agrupado %>% 
+    filter(filme == "Colossal")
+
+haMelhoresCluster = agrupado %>% 
+    filter(filme == "Bride Wars")
+
+altaExpectativaCluster = agrupado %>% 
+    filter(filme == "Rio 2")
+
+passatempoBomCluster = agrupado %>% 
+    filter(filme == "One Day")
+
+grupos = agrupado %>% 
+    add_column(grupo = NA) %>% 
+    mutate(grupo = sub(telaQuenteCluster$.cluster, "Tela quente", .cluster)) %>% 
+    mutate(grupo = sub(preciososCluster$.cluster, "Preciosos", grupo)) %>% 
+    mutate(grupo = sub(haMelhoresCluster$.cluster, "Há melhores", grupo)) %>% 
+    mutate(grupo = sub(altaExpectativaCluster$.cluster, "Alta expectativa", grupo)) %>% 
+    mutate(grupo = sub(passatempoBomCluster$.cluster, "Passatempo bom", grupo))
+```
+
+```{r}
+x = grupos %>% 
+    ggplot(aes(x=avaliacao, y=bilheteria)) +
+    stat_chull(aes(fill= grupo, text = paste("<b>grupo</b>: ", grupo)), alpha= 0.2, geom="polygon") +
+    geom_point(aes(color = grupo,
+                   text = paste("<b>grupo</b>: ", grupo,
+                                "<br><b>filme</b>: ", filme,
+                                "<br><b>avaliação</b>: ", avaliacao,
+                                "<br><b>bilheteria</b>: ", bilheteria))) +
     xlab("Avaliação") +
-    ylab("Bilheteria")
+    ylab("Bilheteria") +
+    scale_y_log10() +
+    theme(legend.position = "none")
 
-ggplotly(x)
+ggplotly(x, tooltip = "text")
 ```
 
 
